@@ -12,35 +12,74 @@
 </div>
 
 <div id="app-section" style="display:none;">
-    <!-- Toolbar -->
-    <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:20px; flex-wrap:wrap; gap:8px;">
-        <h2 id="current-path-label">📁 /</h2>
-        <div style="display:flex; gap:8px;">
-            <button onclick="showCreateDir()" style="background:#0061ff; color:white; border:none; padding:8px 16px; border-radius:4px; cursor:pointer;">+ New Folder</button>
-            <button onclick="document.getElementById('file-input').click()" style="background:#0061ff; color:white; border:none; padding:8px 16px; border-radius:4px; cursor:pointer;">⬆ Upload File</button>
-            <input type="file" id="file-input" style="display:none;" onchange="uploadFile(this)">
+    <!-- Tab buttons -->
+    <div style="display:flex; gap:8px; margin-bottom:20px;">
+        <button onclick="showTab('files')" id="tab-files" style="background:#0061ff; color:white; border:none; padding:8px 20px; border-radius:4px; cursor:pointer; font-weight:bold;">My Files</button>
+        <button onclick="showTab('shared')" id="tab-shared" style="background:#e0e0e0; color:#333; border:none; padding:8px 20px; border-radius:4px; cursor:pointer;">Shared With Me</button>
+        <button onclick="showTab('duplicates')" id="tab-duplicates" style="background:#e0e0e0; color:#333; border:none; padding:8px 20px; border-radius:4px; cursor:pointer;">Find Duplicates</button>
+    </div>
+
+    <!-- ===== MY FILES TAB ===== -->
+    <div id="tab-files-content">
+        <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:16px; flex-wrap:wrap; gap:8px;">
+            <h2 id="current-path-label">📁 /</h2>
+            <div style="display:flex; gap:8px;">
+                <button onclick="showCreateDir()" style="background:#0061ff; color:white; border:none; padding:8px 16px; border-radius:4px; cursor:pointer;">+ New Folder</button>
+                <button onclick="document.getElementById('file-input').click()" style="background:#0061ff; color:white; border:none; padding:8px 16px; border-radius:4px; cursor:pointer;">⬆ Upload File</button>
+                <input type="file" id="file-input" style="display:none;" onchange="uploadFile(this)">
+            </div>
+        </div>
+
+        <div id="create-dir-form" style="display:none; margin-bottom:16px; background:white; padding:16px; border-radius:8px; box-shadow:0 1px 4px rgba(0,0,0,0.1);">
+            <input id="new-dir-name" type="text" placeholder="Folder name" style="padding:8px; border:1px solid #ccc; border-radius:4px; margin-right:8px; width:200px;">
+            <button onclick="createDirectory()" style="background:#0061ff; color:white; border:none; padding:8px 16px; border-radius:4px; cursor:pointer;">Create</button>
+            <button onclick="hideCreateDir()" style="background:#ccc; color:#333; border:none; padding:8px 16px; border-radius:4px; cursor:pointer; margin-left:4px;">Cancel</button>
+        </div>
+
+        <div id="error-msg" style="color:red; margin-bottom:12px;"></div>
+        <div id="success-msg" style="color:green; margin-bottom:12px;"></div>
+
+        <div style="background:white; border-radius:8px; box-shadow:0 1px 4px rgba(0,0,0,0.1);">
+            <div style="padding:10px 16px; border-bottom:2px solid #eee; display:flex; justify-content:space-between; font-weight:bold; color:#666; font-size:14px;">
+                <span>Name</span><span>Actions</span>
+            </div>
+            <div id="dir-items"></div>
+            <div id="file-items"></div>
         </div>
     </div>
 
-    <!-- Create directory form -->
-    <div id="create-dir-form" style="display:none; margin-bottom:16px; background:white; padding:16px; border-radius:8px; box-shadow:0 1px 4px rgba(0,0,0,0.1);">
-        <input id="new-dir-name" type="text" placeholder="Folder name" style="padding:8px; border:1px solid #ccc; border-radius:4px; margin-right:8px; width:200px;">
-        <button onclick="createDirectory()" style="background:#0061ff; color:white; border:none; padding:8px 16px; border-radius:4px; cursor:pointer;">Create</button>
-        <button onclick="hideCreateDir()" style="background:#ccc; color:#333; border:none; padding:8px 16px; border-radius:4px; cursor:pointer; margin-left:4px;">Cancel</button>
+    <!-- ===== SHARED WITH ME TAB ===== -->
+    <div id="tab-shared-content" style="display:none;">
+        <h2 style="margin-bottom:16px;">Files Shared With Me</h2>
+        <div style="background:white; border-radius:8px; box-shadow:0 1px 4px rgba(0,0,0,0.1);">
+            <div style="padding:10px 16px; border-bottom:2px solid #eee; display:flex; justify-content:space-between; font-weight:bold; color:#666; font-size:14px;">
+                <span>File / Path / Owner</span><span>Actions</span>
+            </div>
+            <div id="shared-items"></div>
+        </div>
     </div>
 
-    <div id="error-msg" style="color:red; margin-bottom:12px;"></div>
-    <div id="success-msg" style="color:green; margin-bottom:12px;"></div>
-
-    <!-- File/Directory listing -->
-    <div style="background:white; border-radius:8px; box-shadow:0 1px 4px rgba(0,0,0,0.1);">
-        <!-- Header row -->
-        <div style="padding:10px 16px; border-bottom:2px solid #eee; display:flex; justify-content:space-between; font-weight:bold; color:#666; font-size:14px;">
-            <span>Name</span>
-            <span>Actions</span>
+    <!-- ===== DUPLICATES TAB ===== -->
+    <div id="tab-duplicates-content" style="display:none;">
+        <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:16px;">
+            <h2>Duplicate Files Across Your Dropbox</h2>
+            <button onclick="loadDuplicates()" style="background:#0061ff; color:white; border:none; padding:8px 16px; border-radius:4px; cursor:pointer;">🔍 Scan Now</button>
         </div>
-        <div id="dir-items"></div>
-        <div id="file-items"></div>
+        <div id="duplicates-list"></div>
+    </div>
+</div>
+
+<!-- Share file modal -->
+<div id="share-modal" style="display:none; position:fixed; top:0; left:0; width:100%; height:100%; background:rgba(0,0,0,0.5); z-index:1000; justify-content:center; align-items:center;">
+    <div style="background:white; padding:24px; border-radius:8px; width:360px;">
+        <h3 style="margin-bottom:16px;">Share File</h3>
+        <p id="share-filename" style="color:#666; margin-bottom:12px;"></p>
+        <input id="share-email" type="email" placeholder="Enter user's email" style="width:100%; padding:8px; border:1px solid #ccc; border-radius:4px; margin-bottom:12px;">
+        <div id="share-error" style="color:red; margin-bottom:8px;"></div>
+        <div style="display:flex; gap:8px; justify-content:flex-end;">
+            <button onclick="closeShareModal()" style="background:#ccc; color:#333; border:none; padding:8px 16px; border-radius:4px; cursor:pointer;">Cancel</button>
+            <button onclick="submitShare()" style="background:#0061ff; color:white; border:none; padding:8px 16px; border-radius:4px; cursor:pointer;">Share</button>
+        </div>
     </div>
 </div>
 {% endblock %}
@@ -48,18 +87,17 @@
 {% block scripts %}
 <script>
     let currentPath = '/';
+    let shareFileId = null;
 
     function showLoading(text = 'Loading...') {
-        const overlay = document.getElementById('loading-overlay');
         document.getElementById('loading-text').textContent = text;
-        overlay.style.display = 'flex';
+        document.getElementById('loading-overlay').style.display = 'flex';
     }
 
     function hideLoading() {
         document.getElementById('loading-overlay').style.display = 'none';
     }
 
-    // Show spinner immediately while Firebase checks auth state
     showLoading('Checking authentication...');
 
     firebase.auth().onAuthStateChanged(async function(user) {
@@ -80,90 +118,98 @@
         }
     });
 
-    function loadContents(user = null) {
-        loadDirectories(user);
-        loadFiles(user);
+    // ===== TAB SWITCHING =====
+    function showTab(tab) {
+        ['files', 'shared', 'duplicates'].forEach(t => {
+            document.getElementById('tab-' + t + '-content').style.display = t === tab ? 'block' : 'none';
+            document.getElementById('tab-' + t).style.background = t === tab ? '#0061ff' : '#e0e0e0';
+            document.getElementById('tab-' + t).style.color = t === tab ? 'white' : '#333';
+        });
+        if (tab === 'shared') loadSharedFiles();
+        if (tab === 'duplicates') loadDuplicates();
     }
 
-    function loadDirectories(user = null) {
-        authFetch('/directories?path=' + encodeURIComponent(currentPath), {}, user)
-            .then(r => r.json())
-            .then(dirs => {
-                const container = document.getElementById('dir-items');
-                container.innerHTML = '';
-
-                if (currentPath !== '/') {
-                    const upItem = document.createElement('div');
-                    upItem.style = 'padding:12px 16px; border-bottom:1px solid #eee; cursor:pointer; display:flex; align-items:center; color:#0061ff;';
-                    upItem.innerHTML = '<span style="margin-right:8px;">📁</span> ../';
-                    upItem.onclick = () => goUpDirectory();
-                    container.appendChild(upItem);
-                }
-
-                dirs.forEach(dir => {
-                    const item = document.createElement('div');
-                    item.style = 'padding:12px 16px; border-bottom:1px solid #eee; display:flex; justify-content:space-between; align-items:center;';
-                    item.innerHTML = `
-                        <span style="cursor:pointer; color:#0061ff;" onclick="enterDirectory('${dir.path}')">
-                            <span style="margin-right:8px;">📁</span>${dir.name}
-                        </span>
-                        <button onclick="deleteDirectory('${dir.id}', '${dir.name}')"
-                            style="background:#ff4444; color:white; border:none; padding:4px 10px; border-radius:4px; cursor:pointer; font-size:12px;">
-                            Delete
-                        </button>
-                    `;
-                    container.appendChild(item);
-                });
-            });
+    // ===== FILES TAB =====
+    function loadContents(user = null, spinner = false) {
+        if (spinner) showLoading('Loading...');
+        const dirPromise = authFetch('/directories?path=' + encodeURIComponent(currentPath), {}, user)
+            .then(r => r.json()).then(renderDirectories);
+        const filePromise = authFetch('/files?path=' + encodeURIComponent(currentPath), {}, user)
+            .then(r => r.json()).then(renderFiles);
+        if (spinner) Promise.all([dirPromise, filePromise]).then(hideLoading);
     }
 
-    function loadFiles(user = null) {
-        authFetch('/files?path=' + encodeURIComponent(currentPath), {}, user)
-            .then(r => r.json())
-            .then(files => {
-                const container = document.getElementById('file-items');
-                container.innerHTML = '';
+    function renderDirectories(dirs) {
+        const container = document.getElementById('dir-items');
+        container.innerHTML = '';
 
-                if (files.length === 0) return;
+        if (currentPath !== '/') {
+            const upItem = document.createElement('div');
+            upItem.style = 'padding:12px 16px; border-bottom:1px solid #eee; cursor:pointer; display:flex; align-items:center; color:#0061ff;';
+            upItem.innerHTML = '<span style="margin-right:8px;">📁</span> ../';
+            upItem.onclick = () => goUpDirectory();
+            container.appendChild(upItem);
+        }
 
-                // Detect duplicates by hash
-                const hashCount = {};
-                files.forEach(f => {
-                    hashCount[f.hash] = (hashCount[f.hash] || 0) + 1;
-                });
+        dirs.forEach(dir => {
+            const item = document.createElement('div');
+            item.style = 'padding:12px 16px; border-bottom:1px solid #eee; display:flex; justify-content:space-between; align-items:center;';
+            item.innerHTML = `
+                <span style="cursor:pointer; color:#0061ff;" onclick="enterDirectory('${dir.path}')">
+                    <span style="margin-right:8px;">📁</span>${dir.name}
+                </span>
+                <button onclick="deleteDirectory('${dir.id}', '${dir.name}')"
+                    style="background:#ff4444; color:white; border:none; padding:4px 10px; border-radius:4px; cursor:pointer; font-size:12px;">
+                    Delete
+                </button>
+            `;
+            container.appendChild(item);
+        });
+    }
 
-                files.forEach(file => {
-                    const isDuplicate = hashCount[file.hash] > 1;
-                    const sizeKB = (file.size / 1024).toFixed(1);
-                    const item = document.createElement('div');
-                    item.style = `padding:12px 16px; border-bottom:1px solid #eee; display:flex; justify-content:space-between; align-items:center; ${isDuplicate ? 'background:#fff8e1;' : ''}`;
-                    item.innerHTML = `
-                        <span>
-                            <span style="margin-right:8px;">📄</span>${file.name}
-                            <span style="color:#999; font-size:12px; margin-left:8px;">${sizeKB} KB</span>
-                            ${isDuplicate ? '<span style="color:#f57c00; font-size:12px; margin-left:8px;">⚠ Duplicate</span>' : ''}
-                        </span>
-                        <div style="display:flex; gap:6px;">
-                            <button onclick="downloadFile('${file.id}', '${file.name}')"
-                                style="background:#0061ff; color:white; border:none; padding:4px 10px; border-radius:4px; cursor:pointer; font-size:12px;">
-                                Download
-                            </button>
-                            <button onclick="deleteFile('${file.id}', '${file.name}')"
-                                style="background:#ff4444; color:white; border:none; padding:4px 10px; border-radius:4px; cursor:pointer; font-size:12px;">
-                                Delete
-                            </button>
-                        </div>
-                    `;
-                    container.appendChild(item);
-                });
-            });
+    function renderFiles(files) {
+        const container = document.getElementById('file-items');
+        container.innerHTML = '';
+        if (files.length === 0) return;
+
+        const hashCount = {};
+        files.forEach(f => { hashCount[f.hash] = (hashCount[f.hash] || 0) + 1; });
+
+        files.forEach(file => {
+            const isDuplicate = hashCount[file.hash] > 1;
+            const sizeKB = (file.size / 1024).toFixed(1);
+            const item = document.createElement('div');
+            item.style = `padding:12px 16px; border-bottom:1px solid #eee; display:flex; justify-content:space-between; align-items:center; ${isDuplicate ? 'background:#fff8e1;' : ''}`;
+            item.innerHTML = `
+                <span>
+                    <span style="margin-right:8px;">📄</span>${file.name}
+                    <span style="color:#999; font-size:12px; margin-left:8px;">${sizeKB} KB</span>
+                    ${isDuplicate ? '<span style="color:#f57c00; font-size:12px; margin-left:8px;">⚠ Duplicate</span>' : ''}
+                </span>
+                <div style="display:flex; gap:6px;">
+                    <button onclick="openShareModal('${file.id}', '${file.name}')"
+                        style="background:#43a047; color:white; border:none; padding:4px 10px; border-radius:4px; cursor:pointer; font-size:12px;">
+                        Share
+                    </button>
+                    <button onclick="downloadFile('${file.id}', '${file.name}')"
+                        style="background:#0061ff; color:white; border:none; padding:4px 10px; border-radius:4px; cursor:pointer; font-size:12px;">
+                        Download
+                    </button>
+                    <button onclick="deleteFile('${file.id}', '${file.name}')"
+                        style="background:#ff4444; color:white; border:none; padding:4px 10px; border-radius:4px; cursor:pointer; font-size:12px;">
+                        Delete
+                    </button>
+                </div>
+            `;
+            container.appendChild(item);
+        });
     }
 
     function enterDirectory(path) {
         currentPath = path;
         document.getElementById('current-path-label').textContent = '📁 ' + path;
         clearMessages();
-        loadContents(firebase.auth().currentUser);
+        loadContents(firebase.auth().currentUser, true);
     }
 
     function goUpDirectory() {
@@ -173,7 +219,7 @@
         if (currentPath === '') currentPath = '/';
         document.getElementById('current-path-label').textContent = '📁 ' + currentPath;
         clearMessages();
-        loadContents(firebase.auth().currentUser);
+        loadContents(firebase.auth().currentUser, true);
     }
 
     function showCreateDir() {
@@ -195,12 +241,8 @@
         })
         .then(r => r.json())
         .then(data => {
-            if (data.error) {
-                showError(data.error);
-            } else {
-                hideCreateDir();
-                loadDirectories();
-            }
+            if (data.error) showError(data.error);
+            else { hideCreateDir(); loadContents(firebase.auth().currentUser); }
         });
     }
 
@@ -210,18 +252,16 @@
         .then(r => r.json())
         .then(data => {
             if (data.error) showError(data.error);
-            else loadDirectories();
+            else loadContents(firebase.auth().currentUser);
         });
     }
 
     async function uploadFile(input) {
         const file = input.files[0];
         if (!file) return;
-
         showLoading('Uploading ' + file.name + '...');
         const user = firebase.auth().currentUser;
         const token = await user.getIdToken();
-
         const formData = new FormData();
         formData.append('file', file);
         formData.append('current_path', currentPath);
@@ -239,25 +279,20 @@
                 const d2 = await r2.json();
                 hideLoading();
                 if (d2.error) showError(d2.error);
-                else { showSuccess('File uploaded!'); loadFiles(); }
+                else { showSuccess('File uploaded!'); loadContents(firebase.auth().currentUser); }
             }
         } else if (data.error) {
-            hideLoading();
-            showError(data.error);
+            hideLoading(); showError(data.error);
         } else {
-            hideLoading();
-            showSuccess('File uploaded!');
-            loadFiles();
+            hideLoading(); showSuccess('File uploaded!'); loadContents(firebase.auth().currentUser);
         }
-
         input.value = '';
     }
 
-    async function downloadFile(id, name) {
-        const user = firebase.auth().currentUser;
-        const token = await user.getIdToken();
+    async function downloadFile(id, name, shared = false) {
+        const token = await firebase.auth().currentUser.getIdToken();
         const a = document.createElement('a');
-        a.href = '/files/' + id + '/download?token=' + token;
+        a.href = '/files/' + id + '/download' + (shared ? '/shared' : '') + '?token=' + token;
         a.download = name;
         a.click();
     }
@@ -268,10 +303,108 @@
         .then(r => r.json())
         .then(data => {
             if (data.error) showError(data.error);
-            else loadFiles();
+            else loadContents(firebase.auth().currentUser);
         });
     }
 
+    // ===== SHARE MODAL =====
+    function openShareModal(fileId, fileName) {
+        shareFileId = fileId;
+        document.getElementById('share-filename').textContent = '📄 ' + fileName;
+        document.getElementById('share-email').value = '';
+        document.getElementById('share-error').textContent = '';
+        document.getElementById('share-modal').style.display = 'flex';
+    }
+
+    function closeShareModal() {
+        document.getElementById('share-modal').style.display = 'none';
+        shareFileId = null;
+    }
+
+    function submitShare() {
+        const email = document.getElementById('share-email').value.trim();
+        if (!email) return;
+        authFetch('/files/' + shareFileId + '/share', {
+            method: 'POST',
+            body: JSON.stringify({ email: email })
+        })
+        .then(r => r.json())
+        .then(data => {
+            if (data.error) {
+                document.getElementById('share-error').textContent = data.error;
+            } else {
+                closeShareModal();
+                showSuccess('File shared successfully!');
+            }
+        });
+    }
+
+    // ===== SHARED WITH ME TAB =====
+    function loadSharedFiles() {
+        authFetch('/shared')
+            .then(r => r.json())
+            .then(files => {
+                const container = document.getElementById('shared-items');
+                container.innerHTML = '';
+                if (files.length === 0) {
+                    container.innerHTML = '<div style="padding:24px; text-align:center; color:#999;">No files have been shared with you yet.</div>';
+                    return;
+                }
+                files.forEach(file => {
+                    const sizeKB = (file.size / 1024).toFixed(1);
+                    const item = document.createElement('div');
+                    item.style = 'padding:12px 16px; border-bottom:1px solid #eee; display:flex; justify-content:space-between; align-items:center;';
+                    item.innerHTML = `
+                        <span>
+                            <span style="margin-right:8px;">📄</span><strong>${file.name}</strong>
+                            <span style="color:#999; font-size:12px; margin-left:8px;">${file.path} · ${sizeKB} KB · shared by ${file.owner}</span>
+                        </span>
+                        <button onclick="downloadFile('${file.id}', '${file.name}', true)"
+                            style="background:#0061ff; color:white; border:none; padding:4px 10px; border-radius:4px; cursor:pointer; font-size:12px;">
+                            Download
+                        </button>
+                    `;
+                    container.appendChild(item);
+                });
+            });
+    }
+
+
+    // ===== DUPLICATES TAB =====
+    function loadDuplicates() {
+        showLoading('Scanning for duplicates...');
+        authFetch('/files/duplicates')
+            .then(r => r.json())
+            .then(groups => {
+                hideLoading();
+                const container = document.getElementById('duplicates-list');
+                container.innerHTML = '';
+                if (groups.length === 0) {
+                    container.innerHTML = '<div style="background:white; padding:24px; text-align:center; color:#999; border-radius:8px; box-shadow:0 1px 4px rgba(0,0,0,0.1);">No duplicate files found.</div>';
+                    return;
+                }
+                groups.forEach((group, i) => {
+                    const card = document.createElement('div');
+                    card.style = 'background:white; border-radius:8px; box-shadow:0 1px 4px rgba(0,0,0,0.1); margin-bottom:16px; overflow:hidden;';
+                    card.innerHTML = `<div style="padding:10px 16px; background:#fff8e1; border-bottom:2px solid #ffe082; font-weight:bold; color:#f57c00;">⚠ Duplicate Group ${i + 1} — ${group.length} identical files</div>`;
+                    group.forEach(file => {
+                        const sizeKB = (file.size / 1024).toFixed(1);
+                        const row = document.createElement('div');
+                        row.style = 'padding:12px 16px; border-bottom:1px solid #eee; display:flex; justify-content:space-between; align-items:center;';
+                        row.innerHTML = `
+                            <span>
+                                <span style="margin-right:8px;">📄</span>${file.name}
+                                <span style="color:#999; font-size:12px; margin-left:8px;">${file.path} · ${sizeKB} KB</span>
+                            </span>
+                        `;
+                        card.appendChild(row);
+                    });
+                    container.appendChild(card);
+                });
+            });
+    }
+
+    // ===== HELPERS =====
     function showError(msg) {
         document.getElementById('error-msg').textContent = msg;
         document.getElementById('success-msg').textContent = '';

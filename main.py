@@ -10,12 +10,10 @@ import json
 app = Flask(__name__)
 
 db = firestore.Client(project=local_constants.PROJECT_NAME, database='dropbox-db')
-gcs = storage.Client(project=local_constants.PROJECT_NAME)
-bucket = gcs.bucket(local_constants.BUCKET_NAME)
+bucket = storage.Client(project=local_constants.PROJECT_NAME).bucket(local_constants.BUCKET_NAME)
 
 
 def verify_firebase_token(token):
-    """Verify a Firebase ID token using the Firebase REST API."""
     url = f"https://identitytoolkit.googleapis.com/v1/accounts:lookup?key={local_constants.FIREBASE_API_KEY}"
     data = json.dumps({"idToken": token}).encode('utf-8')
     req = urllib.request.Request(url, data=data, headers={'Content-Type': 'application/json'})
@@ -32,8 +30,17 @@ def get_current_user():
     auth_header = request.headers.get('Authorization', '')
     if not auth_header.startswith('Bearer '):
         return None, None
-    token = auth_header.split('Bearer ')[1]
-    return verify_firebase_token(token)
+    return verify_firebase_token(auth_header.split('Bearer ')[1])
+
+
+def resolve_uid():
+    """Resolve uid from query param token or Authorization header."""
+    token = request.args.get('token', '')
+    if token:
+        uid, _ = verify_firebase_token(token)
+        return uid
+    uid, _ = get_current_user()
+    return uid
 
 
 def ensure_user_exists(uid, email):
@@ -82,8 +89,7 @@ def list_directories():
             .where(filter=FieldFilter('uid', '==', uid))
             .where(filter=FieldFilter('parent_path', '==', current_path))
             .stream())
-    result = [{'id': d.id, 'name': d.to_dict()['name'], 'path': d.to_dict()['path']} for d in dirs]
-    return jsonify(result)
+    return jsonify([{'id': d.id, 'name': d.to_dict()['name'], 'path': d.to_dict()['path']} for d in dirs])
 
 
 @app.route('/directories', methods=['POST'])
@@ -106,7 +112,7 @@ def create_directory():
                 .where(filter=FieldFilter('parent_path', '==', current_path))
                 .where(filter=FieldFilter('name', '==', name))
                 .get())
-    if len(existing) > 0:
+    if existing:
         return jsonify({'error': 'A directory with that name already exists here'}), 400
 
     db.collection('directories').add({
@@ -139,14 +145,14 @@ def delete_directory(dir_id):
                .where(filter=FieldFilter('uid', '==', uid))
                .where(filter=FieldFilter('parent_path', '==', dir_path))
                .get())
-    if len(subdirs) > 0:
+    if subdirs:
         return jsonify({'error': 'Directory is not empty (contains subdirectories)'}), 400
 
     files = (db.collection('files')
              .where(filter=FieldFilter('uid', '==', uid))
              .where(filter=FieldFilter('directory_path', '==', dir_path))
              .get())
-    if len(files) > 0:
+    if files:
         return jsonify({'error': 'Directory is not empty (contains files)'}), 400
 
     dir_ref.delete()
@@ -164,15 +170,17 @@ def list_files():
              .where(filter=FieldFilter('uid', '==', uid))
              .where(filter=FieldFilter('directory_path', '==', current_path))
              .stream())
-    result = [{'id': f.id, 'name': f.to_dict()['name'], 'size': f.to_dict().get('size', 0), 'hash': f.to_dict().get('hash', '')} for f in files]
+    result = []
+    for f in files:
+        d = f.to_dict()
+        result.append({'id': f.id, 'name': d['name'], 'size': d.get('size', 0), 'hash': d.get('hash', '')})
     return jsonify(result)
 
 
 @app.route('/files/upload', methods=['POST'])
 def upload_file():
     # File uploads use FormData so token comes from form field, not header
-    token = request.form.get('token', '')
-    uid, _ = verify_firebase_token(token)
+    uid, _ = verify_firebase_token(request.form.get('token', ''))
     if not uid:
         return jsonify({'error': 'Invalid token'}), 401
 
@@ -187,28 +195,20 @@ def upload_file():
     file_bytes = uploaded_file.read()
     file_hash = compute_hash(file_bytes)
 
-    # Check if file already exists in this directory
     existing = (db.collection('files')
                 .where(filter=FieldFilter('uid', '==', uid))
                 .where(filter=FieldFilter('directory_path', '==', current_path))
                 .where(filter=FieldFilter('name', '==', filename))
                 .get())
 
-    if len(existing) > 0 and not overwrite:
+    if existing and not overwrite:
         return jsonify({'error': 'File already exists', 'exists': True}), 409
 
-    # Store in Cloud Storage
     blob_path = f"{uid}{current_path}{filename}"
-    blob = bucket.blob(blob_path)
-    blob.upload_from_string(file_bytes, content_type=uploaded_file.content_type)
+    bucket.blob(blob_path).upload_from_string(file_bytes, content_type=uploaded_file.content_type)
 
-    # Save or update metadata in Firestore
-    if len(existing) > 0 and overwrite:
-        existing[0].reference.update({
-            'size': len(file_bytes),
-            'hash': file_hash,
-            'blob_path': blob_path
-        })
+    if existing and overwrite:
+        existing[0].reference.update({'size': len(file_bytes), 'hash': file_hash, 'blob_path': blob_path})
     else:
         db.collection('files').add({
             'uid': uid,
@@ -222,32 +222,24 @@ def upload_file():
     return jsonify({'status': 'ok'})
 
 
+def send_blob(file_doc):
+    """Stream a Firestore file document's blob to the client."""
+    data = file_doc.to_dict()
+    file_bytes = bucket.blob(data['blob_path']).download_as_bytes()
+    return send_file(io.BytesIO(file_bytes), download_name=data['name'], as_attachment=True)
+
+
 @app.route('/files/<file_id>/download', methods=['GET'])
 def download_file(file_id):
-    # Support token via query param for direct download links
-    token = request.args.get('token', '')
-    if token:
-        uid, _ = verify_firebase_token(token)
-    else:
-        uid, _ = get_current_user()
+    uid = resolve_uid()
     if not uid:
         return jsonify({'error': 'Not logged in'}), 401
 
-    file_ref = db.collection('files').document(file_id)
-    file_doc = file_ref.get()
-
+    file_doc = db.collection('files').document(file_id).get()
     if not file_doc.exists or file_doc.to_dict()['uid'] != uid:
         return jsonify({'error': 'File not found'}), 404
 
-    file_data = file_doc.to_dict()
-    blob = bucket.blob(file_data['blob_path'])
-    file_bytes = blob.download_as_bytes()
-
-    return send_file(
-        io.BytesIO(file_bytes),
-        download_name=file_data['name'],
-        as_attachment=True
-    )
+    return send_blob(file_doc)
 
 
 @app.route('/files/<file_id>', methods=['DELETE'])
@@ -268,6 +260,97 @@ def delete_file(file_id):
 
     file_ref.delete()
     return jsonify({'status': 'ok'})
+
+
+@app.route('/files/duplicates', methods=['GET'])
+def find_duplicates():
+    uid, _ = get_current_user()
+    if not uid:
+        return jsonify({'error': 'Not logged in'}), 401
+
+    hash_map = {}
+    for f in db.collection('files').where(filter=FieldFilter('uid', '==', uid)).stream():
+        d = f.to_dict()
+        h = d.get('hash', '')
+        if h:
+            hash_map.setdefault(h, []).append({
+                'id': f.id,
+                'name': d['name'],
+                'path': d['directory_path'],
+                'size': d.get('size', 0)
+            })
+
+    return jsonify([group for group in hash_map.values() if len(group) > 1])
+
+
+@app.route('/files/<file_id>/share', methods=['POST'])
+def share_file(file_id):
+    uid, _ = get_current_user()
+    if not uid:
+        return jsonify({'error': 'Not logged in'}), 401
+
+    file_ref = db.collection('files').document(file_id)
+    file_doc = file_ref.get()
+
+    if not file_doc.exists or file_doc.to_dict()['uid'] != uid:
+        return jsonify({'error': 'File not found'}), 404
+
+    target_email = request.json.get('email', '').strip().lower()
+    if not target_email:
+        return jsonify({'error': 'Email is required'}), 400
+
+    target_users = db.collection('users').where(filter=FieldFilter('email', '==', target_email)).get()
+    if not target_users:
+        return jsonify({'error': 'No user found with that email'}), 404
+
+    target_uid = target_users[0].to_dict()['uid']
+    if target_uid == uid:
+        return jsonify({'error': 'Cannot share with yourself'}), 400
+
+    shared_with = file_doc.to_dict().get('shared_with', [])
+    if target_uid not in shared_with:
+        shared_with.append(target_uid)
+        file_ref.update({'shared_with': shared_with})
+
+    return jsonify({'status': 'ok'})
+
+
+@app.route('/shared', methods=['GET'])
+def list_shared_files():
+    uid, _ = get_current_user()
+    if not uid:
+        return jsonify({'error': 'Not logged in'}), 401
+
+    result = []
+    for f in db.collection('files').where(filter=FieldFilter('shared_with', 'array_contains', uid)).stream():
+        d = f.to_dict()
+        owner = db.collection('users').document(d['uid']).get()
+        owner_email = owner.to_dict().get('email', 'Unknown') if owner.exists else 'Unknown'
+        result.append({
+            'id': f.id,
+            'name': d['name'],
+            'path': d['directory_path'],
+            'owner': owner_email,
+            'size': d.get('size', 0)
+        })
+    return jsonify(result)
+
+
+@app.route('/files/<file_id>/download/shared', methods=['GET'])
+def download_shared_file(file_id):
+    uid = resolve_uid()
+    if not uid:
+        return jsonify({'error': 'Not logged in'}), 401
+
+    file_doc = db.collection('files').document(file_id).get()
+    if not file_doc.exists:
+        return jsonify({'error': 'File not found'}), 404
+
+    d = file_doc.to_dict()
+    if d['uid'] != uid and uid not in d.get('shared_with', []):
+        return jsonify({'error': 'Access denied'}), 403
+
+    return send_blob(file_doc)
 
 
 if __name__ == '__main__':
