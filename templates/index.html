@@ -1,0 +1,36 @@
+{% extends "base.html" %}
+
+{% block title %}My Dropbox{% endblock %}
+
+{% block content %}
+<div id="login-section" style="text-align:center; margin-top: 80px;">
+    <h2>Welcome to Dropbox Clone</h2>
+    <p style="margin: 16px 0; color: #666;">Please login to access your files</p>
+    <button onclick="googleLogin()" style="background:#0061ff; color:white; border:none; padding:12px 24px; border-radius:4px; cursor:pointer; font-size:16px;">
+        Login with Google
+    </button>
+</div>
+
+<div id="app-section" style="display:none;">
+    <h2 id="current-path" style="margin-bottom: 20px;">📁 /</h2>
+    <p>You are logged in. More features coming soon...</p>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+    // Show/hide sections based on login state
+    firebase.auth().onAuthStateChanged(function(user) {
+        if (user) {
+            document.getElementById('login-section').style.display = 'none';
+            document.getElementById('app-section').style.display = 'block';
+            document.getElementById('nav-auth').innerHTML =
+                '<span style="margin-right:12px;">' + user.email + '</span>' +
+                '<button onclick="googleLogout()">Logout</button>';
+        } else {
+            document.getElementById('login-section').style.display = 'block';
+            document.getElementById('app-section').style.display = 'none';
+        }
+    });
+</script>
+{% endblock %}

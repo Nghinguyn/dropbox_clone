@@ -1,0 +1,48 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>{% block title %}Dropbox Clone{% endblock %}</title>
+    <style>
+        * { box-sizing: border-box; margin: 0; padding: 0; }
+        body { font-family: Arial, sans-serif; background: #f5f5f5; color: #333; }
+        nav {
+            background: #0061ff;
+            color: white;
+            padding: 12px 24px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+        nav h1 { font-size: 20px; }
+        nav button {
+            background: white;
+            color: #0061ff;
+            border: none;
+            padding: 8px 16px;
+            border-radius: 4px;
+            cursor: pointer;
+            font-weight: bold;
+        }
+        .container { max-width: 900px; margin: 40px auto; padding: 0 20px; }
+    </style>
+</head>
+<body>
+    <nav>
+        <h1>Dropbox Clone</h1>
+        <div id="nav-auth">
+            <button onclick="googleLogin()">Login with Google</button>
+        </div>
+    </nav>
+    <div class="container">
+        {% block content %}{% endblock %}
+    </div>
+
+    <!-- Firebase SDKs -->
+    <script src="https://www.gstatic.com/firebasejs/9.22.2/firebase-app-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/9.22.2/firebase-auth-compat.js"></script>
+    <script src="{{ url_for('static', filename='firebase-login.js') }}"></script>
+    {% block scripts %}{% endblock %}
+</body>
+</html>
