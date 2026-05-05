@@ -12,25 +12,144 @@
 </div>
 
 <div id="app-section" style="display:none;">
-    <h2 id="current-path" style="margin-bottom: 20px;">📁 /</h2>
-    <p>You are logged in. More features coming soon...</p>
+    <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:20px;">
+        <h2 id="current-path-label">📁 /</h2>
+        <button onclick="showCreateDir()" style="background:#0061ff; color:white; border:none; padding:8px 16px; border-radius:4px; cursor:pointer;">
+            + New Folder
+        </button>
+    </div>
+
+    <!-- Create directory form -->
+    <div id="create-dir-form" style="display:none; margin-bottom:20px; background:white; padding:16px; border-radius:8px; box-shadow:0 1px 4px rgba(0,0,0,0.1);">
+        <input id="new-dir-name" type="text" placeholder="Folder name" style="padding:8px; border:1px solid #ccc; border-radius:4px; margin-right:8px; width:200px;">
+        <button onclick="createDirectory()" style="background:#0061ff; color:white; border:none; padding:8px 16px; border-radius:4px; cursor:pointer;">Create</button>
+        <button onclick="hideCreateDir()" style="background:#ccc; color:#333; border:none; padding:8px 16px; border-radius:4px; cursor:pointer; margin-left:4px;">Cancel</button>
+    </div>
+
+    <div id="error-msg" style="color:red; margin-bottom:12px;"></div>
+
+    <div id="directory-list" style="background:white; border-radius:8px; box-shadow:0 1px 4px rgba(0,0,0,0.1);">
+        <div id="dir-items"></div>
+    </div>
 </div>
 {% endblock %}
 
 {% block scripts %}
 <script>
-    // Show/hide sections based on login state
-    firebase.auth().onAuthStateChanged(function(user) {
+    let currentPath = '/';
+
+    firebase.auth().onAuthStateChanged(async function(user) {
         if (user) {
+            // Register user in Firestore on first login
+            await authFetch('/login', { method: 'POST' });
+
             document.getElementById('login-section').style.display = 'none';
             document.getElementById('app-section').style.display = 'block';
             document.getElementById('nav-auth').innerHTML =
                 '<span style="margin-right:12px;">' + user.email + '</span>' +
                 '<button onclick="googleLogout()">Logout</button>';
+            loadDirectories();
         } else {
             document.getElementById('login-section').style.display = 'block';
             document.getElementById('app-section').style.display = 'none';
         }
     });
+
+    function loadDirectories() {
+        authFetch('/directories?path=' + encodeURIComponent(currentPath))
+            .then(r => r.json())
+            .then(dirs => {
+                const container = document.getElementById('dir-items');
+                container.innerHTML = '';
+
+                if (currentPath !== '/') {
+                    const upItem = document.createElement('div');
+                    upItem.style = 'padding:12px 16px; border-bottom:1px solid #eee; cursor:pointer; display:flex; align-items:center;';
+                    upItem.innerHTML = '<span style="margin-right:8px;">📁</span> ../';
+                    upItem.onclick = () => goUpDirectory();
+                    container.appendChild(upItem);
+                }
+
+                if (dirs.length === 0 && currentPath === '/') {
+                    container.innerHTML = '<div style="padding:24px; text-align:center; color:#999;">No folders yet. Create one!</div>';
+                    return;
+                }
+
+                dirs.forEach(dir => {
+                    const item = document.createElement('div');
+                    item.style = 'padding:12px 16px; border-bottom:1px solid #eee; display:flex; justify-content:space-between; align-items:center;';
+                    item.innerHTML = `
+                        <span style="cursor:pointer;" onclick="enterDirectory('${dir.path}')">
+                            <span style="margin-right:8px;">📁</span>${dir.name}
+                        </span>
+                        <button onclick="deleteDirectory('${dir.id}', '${dir.name}')"
+                            style="background:#ff4444; color:white; border:none; padding:4px 10px; border-radius:4px; cursor:pointer; font-size:12px;">
+                            Delete
+                        </button>
+                    `;
+                    container.appendChild(item);
+                });
+            });
+    }
+
+    function enterDirectory(path) {
+        currentPath = path;
+        document.getElementById('current-path-label').textContent = '📁 ' + path;
+        loadDirectories();
+    }
+
+    function goUpDirectory() {
+        const parts = currentPath.slice(0, -1).split('/');
+        parts.pop();
+        currentPath = parts.join('/') + '/';
+        if (currentPath === '') currentPath = '/';
+        document.getElementById('current-path-label').textContent = '📁 ' + currentPath;
+        loadDirectories();
+    }
+
+    function showCreateDir() {
+        document.getElementById('create-dir-form').style.display = 'block';
+        document.getElementById('new-dir-name').focus();
+    }
+
+    function hideCreateDir() {
+        document.getElementById('create-dir-form').style.display = 'none';
+        document.getElementById('new-dir-name').value = '';
+    }
+
+    function createDirectory() {
+        const name = document.getElementById('new-dir-name').value.trim();
+        if (!name) return;
+
+        authFetch('/directories', {
+            method: 'POST',
+            body: JSON.stringify({ name: name, current_path: currentPath })
+        })
+        .then(r => r.json())
+        .then(data => {
+            if (data.error) {
+                document.getElementById('error-msg').textContent = data.error;
+            } else {
+                document.getElementById('error-msg').textContent = '';
+                hideCreateDir();
+                loadDirectories();
+            }
+        });
+    }
+
+    function deleteDirectory(id, name) {
+        if (!confirm('Delete folder "' + name + '"?')) return;
+
+        authFetch('/directories/' + id, { method: 'DELETE' })
+        .then(r => r.json())
+        .then(data => {
+            if (data.error) {
+                document.getElementById('error-msg').textContent = data.error;
+            } else {
+                document.getElementById('error-msg').textContent = '';
+                loadDirectories();
+            }
+        });
+    }
 </script>
 {% endblock %}

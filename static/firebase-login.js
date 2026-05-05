@@ -9,28 +9,26 @@ const firebaseConfig = {
 
 firebase.initializeApp(firebaseConfig);
 
+// Helper: make authenticated fetch requests using Firebase token
+async function authFetch(url, options = {}) {
+    const user = firebase.auth().currentUser;
+    if (!user) throw new Error('Not logged in');
+    const token = await user.getIdToken();
+    options.headers = options.headers || {};
+    options.headers['Authorization'] = 'Bearer ' + token;
+    options.headers['Content-Type'] = options.headers['Content-Type'] || 'application/json';
+    return fetch(url, options);
+}
+
 function googleLogin() {
     const provider = new firebase.auth.GoogleAuthProvider();
     firebase.auth().signInWithPopup(provider)
-        .then((result) => {
-            const user = result.user;
-            return user.getIdToken().then((token) => {
-                return fetch('/login', {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ token: token })
-                });
-            });
-        })
-        .then(() => window.location.reload())
         .catch((error) => console.error('Login error:', error));
 }
 
 function googleLogout() {
     firebase.auth().signOut()
-        .then(() => {
-            return fetch('/logout', { method: 'POST' });
-        })
+        .then(() => fetch('/logout', { method: 'POST' }))
         .then(() => window.location.reload())
         .catch((error) => console.error('Logout error:', error));
 }
