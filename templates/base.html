@@ -43,7 +43,15 @@
     </div>
     <style>
         @keyframes spin { to { transform: rotate(360deg); } }
+        #toast-container { position:fixed; bottom:24px; right:24px; z-index:9998; display:flex; flex-direction:column; gap:8px; }
+        .toast { padding:12px 20px; border-radius:6px; color:white; font-size:14px; box-shadow:0 2px 8px rgba(0,0,0,0.2); max-width:320px; animation:slideIn 0.3s ease; }
+        .toast.success { background:#43a047; }
+        .toast.error { background:#e53935; }
+        @keyframes slideIn { from { transform:translateX(100%); opacity:0; } to { transform:translateX(0); opacity:1; } }
     </style>
+
+    <div id="toast-container"></div>
+
     <div class="container">
         {% block content %}{% endblock %}
     </div>
@@ -52,6 +60,17 @@
     <script src="https://www.gstatic.com/firebasejs/9.22.2/firebase-app-compat.js"></script>
     <script src="https://www.gstatic.com/firebasejs/9.22.2/firebase-auth-compat.js"></script>
     <script src="{{ url_for('static', filename='firebase-login.js') }}"></script>
+
+    <script>
+        function showToast(msg, type = 'success') {
+            const toast = document.createElement('div');
+            toast.className = 'toast ' + type;
+            toast.textContent = msg;
+            document.getElementById('toast-container').appendChild(toast);
+            setTimeout(() => toast.remove(), 3500);
+        }
+    </script>
+
     {% block scripts %}{% endblock %}
 </body>
 </html>
