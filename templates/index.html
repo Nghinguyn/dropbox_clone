@@ -167,20 +167,23 @@
     function renderFiles(files) {
         const container = document.getElementById('file-items');
         container.innerHTML = '';
-        if (files.length === 0) return;
+        if (files.length === 0) {
+            container.innerHTML = '<div style="padding:24px; text-align:center; color:#aaa; font-size:14px;">No files in this folder</div>';
+            return;
+        }
 
         const hashCount = {};
         files.forEach(f => { hashCount[f.hash] = (hashCount[f.hash] || 0) + 1; });
 
         files.forEach(file => {
             const isDuplicate = hashCount[file.hash] > 1;
-            const sizeKB = (file.size / 1024).toFixed(1);
+            const sizeKB = formatSize(file.size);
             const item = document.createElement('div');
             item.style = `padding:12px 16px; border-bottom:1px solid #eee; display:flex; justify-content:space-between; align-items:center; ${isDuplicate ? 'background:#fff8e1;' : ''}`;
             item.innerHTML = `
                 <span>
                     <span style="margin-right:8px;">📄</span>${file.name}
-                    <span style="color:#999; font-size:12px; margin-left:8px;">${sizeKB} KB</span>
+                    <span style="color:#999; font-size:12px; margin-left:8px;">${sizeKB}</span>
                     ${isDuplicate ? '<span style="color:#f57c00; font-size:12px; margin-left:8px;">⚠ Duplicate</span>' : ''}
                 </span>
                 <div style="display:flex; gap:6px;">
@@ -348,13 +351,13 @@
                     return;
                 }
                 files.forEach(file => {
-                    const sizeKB = (file.size / 1024).toFixed(1);
+                    const sizeKB = formatSize(file.size);
                     const item = document.createElement('div');
                     item.style = 'padding:12px 16px; border-bottom:1px solid #eee; display:flex; justify-content:space-between; align-items:center;';
                     item.innerHTML = `
                         <span>
                             <span style="margin-right:8px;">📄</span><strong>${file.name}</strong>
-                            <span style="color:#999; font-size:12px; margin-left:8px;">${file.path} · ${sizeKB} KB · shared by ${file.owner}</span>
+                            <span style="color:#999; font-size:12px; margin-left:8px;">${file.path} · ${sizeKB} · shared by ${file.owner}</span>
                         </span>
                         <button onclick="downloadFile('${file.id}', '${file.name}', true)"
                             style="background:#0061ff; color:white; border:none; padding:4px 10px; border-radius:4px; cursor:pointer; font-size:12px;">
@@ -385,13 +388,13 @@
                     card.style = 'background:white; border-radius:8px; box-shadow:0 1px 4px rgba(0,0,0,0.1); margin-bottom:16px; overflow:hidden;';
                     card.innerHTML = `<div style="padding:10px 16px; background:#fff8e1; border-bottom:2px solid #ffe082; font-weight:bold; color:#f57c00;">⚠ Duplicate Group ${i + 1} — ${group.length} identical files</div>`;
                     group.forEach(file => {
-                        const sizeKB = (file.size / 1024).toFixed(1);
+                        const sizeKB = formatSize(file.size);
                         const row = document.createElement('div');
                         row.style = 'padding:12px 16px; border-bottom:1px solid #eee; display:flex; justify-content:space-between; align-items:center;';
                         row.innerHTML = `
                             <span>
                                 <span style="margin-right:8px;">📄</span>${file.name}
-                                <span style="color:#999; font-size:12px; margin-left:8px;">${file.path} · ${sizeKB} KB</span>
+                                <span style="color:#999; font-size:12px; margin-left:8px;">${file.path} · ${sizeKB}</span>
                             </span>
                         `;
                         card.appendChild(row);
@@ -402,6 +405,12 @@
     }
 
     // ===== HELPERS =====
+    function formatSize(bytes) {
+        if (bytes < 1024) return bytes + ' B';
+        if (bytes < 1024 * 1024) return (bytes / 1024).toFixed(1) + ' KB';
+        return (bytes / (1024 * 1024)).toFixed(1) + ' MB';
+    }
+
     function showError(msg) { showToast(msg, 'error'); }
     function showSuccess(msg) { showToast(msg, 'success'); }
     function clearMessages() {}
