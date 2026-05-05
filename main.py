@@ -1,15 +1,31 @@
-from flask import Flask, render_template, request, jsonify
-from google.cloud import firestore
+from flask import Flask, render_template, request, jsonify, send_file
+from google.cloud import firestore, storage
 from google.cloud.firestore import FieldFilter
-import firebase_admin
-from firebase_admin import auth
 import local_constants
+import hashlib
+import io
+import urllib.request
+import json
 
 app = Flask(__name__)
 
 db = firestore.Client(project=local_constants.PROJECT_NAME, database='dropbox-db')
+gcs = storage.Client(project=local_constants.PROJECT_NAME)
+bucket = gcs.bucket(local_constants.BUCKET_NAME)
 
-firebase_admin.initialize_app()
+
+def verify_firebase_token(token):
+    """Verify a Firebase ID token using the Firebase REST API."""
+    url = f"https://identitytoolkit.googleapis.com/v1/accounts:lookup?key={local_constants.FIREBASE_API_KEY}"
+    data = json.dumps({"idToken": token}).encode('utf-8')
+    req = urllib.request.Request(url, data=data, headers={'Content-Type': 'application/json'})
+    try:
+        with urllib.request.urlopen(req) as response:
+            result = json.loads(response.read())
+            user = result['users'][0]
+            return user['localId'], user.get('email', '')
+    except Exception:
+        return None, None
 
 
 def get_current_user():
@@ -17,11 +33,7 @@ def get_current_user():
     if not auth_header.startswith('Bearer '):
         return None, None
     token = auth_header.split('Bearer ')[1]
-    try:
-        decoded = auth.verify_id_token(token)
-        return decoded['uid'], decoded.get('email', '')
-    except Exception:
-        return None, None
+    return verify_firebase_token(token)
 
 
 def ensure_user_exists(uid, email):
@@ -34,6 +46,10 @@ def ensure_user_exists(uid, email):
             'path': '/',
             'parent_path': None
         })
+
+
+def compute_hash(file_bytes):
+    return hashlib.md5(file_bytes).hexdigest()
 
 
 @app.route('/')
@@ -134,6 +150,123 @@ def delete_directory(dir_id):
         return jsonify({'error': 'Directory is not empty (contains files)'}), 400
 
     dir_ref.delete()
+    return jsonify({'status': 'ok'})
+
+
+@app.route('/files', methods=['GET'])
+def list_files():
+    uid, _ = get_current_user()
+    if not uid:
+        return jsonify({'error': 'Not logged in'}), 401
+
+    current_path = request.args.get('path', '/')
+    files = (db.collection('files')
+             .where(filter=FieldFilter('uid', '==', uid))
+             .where(filter=FieldFilter('directory_path', '==', current_path))
+             .stream())
+    result = [{'id': f.id, 'name': f.to_dict()['name'], 'size': f.to_dict().get('size', 0), 'hash': f.to_dict().get('hash', '')} for f in files]
+    return jsonify(result)
+
+
+@app.route('/files/upload', methods=['POST'])
+def upload_file():
+    # File uploads use FormData so token comes from form field, not header
+    token = request.form.get('token', '')
+    uid, _ = verify_firebase_token(token)
+    if not uid:
+        return jsonify({'error': 'Invalid token'}), 401
+
+    current_path = request.form.get('current_path', '/')
+    overwrite = request.form.get('overwrite', 'false') == 'true'
+    uploaded_file = request.files.get('file')
+
+    if not uploaded_file:
+        return jsonify({'error': 'No file provided'}), 400
+
+    filename = uploaded_file.filename
+    file_bytes = uploaded_file.read()
+    file_hash = compute_hash(file_bytes)
+
+    # Check if file already exists in this directory
+    existing = (db.collection('files')
+                .where(filter=FieldFilter('uid', '==', uid))
+                .where(filter=FieldFilter('directory_path', '==', current_path))
+                .where(filter=FieldFilter('name', '==', filename))
+                .get())
+
+    if len(existing) > 0 and not overwrite:
+        return jsonify({'error': 'File already exists', 'exists': True}), 409
+
+    # Store in Cloud Storage
+    blob_path = f"{uid}{current_path}{filename}"
+    blob = bucket.blob(blob_path)
+    blob.upload_from_string(file_bytes, content_type=uploaded_file.content_type)
+
+    # Save or update metadata in Firestore
+    if len(existing) > 0 and overwrite:
+        existing[0].reference.update({
+            'size': len(file_bytes),
+            'hash': file_hash,
+            'blob_path': blob_path
+        })
+    else:
+        db.collection('files').add({
+            'uid': uid,
+            'name': filename,
+            'directory_path': current_path,
+            'blob_path': blob_path,
+            'size': len(file_bytes),
+            'hash': file_hash
+        })
+
+    return jsonify({'status': 'ok'})
+
+
+@app.route('/files/<file_id>/download', methods=['GET'])
+def download_file(file_id):
+    # Support token via query param for direct download links
+    token = request.args.get('token', '')
+    if token:
+        uid, _ = verify_firebase_token(token)
+    else:
+        uid, _ = get_current_user()
+    if not uid:
+        return jsonify({'error': 'Not logged in'}), 401
+
+    file_ref = db.collection('files').document(file_id)
+    file_doc = file_ref.get()
+
+    if not file_doc.exists or file_doc.to_dict()['uid'] != uid:
+        return jsonify({'error': 'File not found'}), 404
+
+    file_data = file_doc.to_dict()
+    blob = bucket.blob(file_data['blob_path'])
+    file_bytes = blob.download_as_bytes()
+
+    return send_file(
+        io.BytesIO(file_bytes),
+        download_name=file_data['name'],
+        as_attachment=True
+    )
+
+
+@app.route('/files/<file_id>', methods=['DELETE'])
+def delete_file(file_id):
+    uid, _ = get_current_user()
+    if not uid:
+        return jsonify({'error': 'Not logged in'}), 401
+
+    file_ref = db.collection('files').document(file_id)
+    file_doc = file_ref.get()
+
+    if not file_doc.exists or file_doc.to_dict()['uid'] != uid:
+        return jsonify({'error': 'File not found'}), 404
+
+    blob = bucket.blob(file_doc.to_dict()['blob_path'])
+    if blob.exists():
+        blob.delete()
+
+    file_ref.delete()
     return jsonify({'status': 'ok'})
 
 

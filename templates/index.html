@@ -12,24 +12,35 @@
 </div>
 
 <div id="app-section" style="display:none;">
-    <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:20px;">
+    <!-- Toolbar -->
+    <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:20px; flex-wrap:wrap; gap:8px;">
         <h2 id="current-path-label">📁 /</h2>
-        <button onclick="showCreateDir()" style="background:#0061ff; color:white; border:none; padding:8px 16px; border-radius:4px; cursor:pointer;">
-            + New Folder
-        </button>
+        <div style="display:flex; gap:8px;">
+            <button onclick="showCreateDir()" style="background:#0061ff; color:white; border:none; padding:8px 16px; border-radius:4px; cursor:pointer;">+ New Folder</button>
+            <button onclick="document.getElementById('file-input').click()" style="background:#0061ff; color:white; border:none; padding:8px 16px; border-radius:4px; cursor:pointer;">⬆ Upload File</button>
+            <input type="file" id="file-input" style="display:none;" onchange="uploadFile(this)">
+        </div>
     </div>
 
     <!-- Create directory form -->
-    <div id="create-dir-form" style="display:none; margin-bottom:20px; background:white; padding:16px; border-radius:8px; box-shadow:0 1px 4px rgba(0,0,0,0.1);">
+    <div id="create-dir-form" style="display:none; margin-bottom:16px; background:white; padding:16px; border-radius:8px; box-shadow:0 1px 4px rgba(0,0,0,0.1);">
         <input id="new-dir-name" type="text" placeholder="Folder name" style="padding:8px; border:1px solid #ccc; border-radius:4px; margin-right:8px; width:200px;">
         <button onclick="createDirectory()" style="background:#0061ff; color:white; border:none; padding:8px 16px; border-radius:4px; cursor:pointer;">Create</button>
         <button onclick="hideCreateDir()" style="background:#ccc; color:#333; border:none; padding:8px 16px; border-radius:4px; cursor:pointer; margin-left:4px;">Cancel</button>
     </div>
 
     <div id="error-msg" style="color:red; margin-bottom:12px;"></div>
+    <div id="success-msg" style="color:green; margin-bottom:12px;"></div>
 
-    <div id="directory-list" style="background:white; border-radius:8px; box-shadow:0 1px 4px rgba(0,0,0,0.1);">
+    <!-- File/Directory listing -->
+    <div style="background:white; border-radius:8px; box-shadow:0 1px 4px rgba(0,0,0,0.1);">
+        <!-- Header row -->
+        <div style="padding:10px 16px; border-bottom:2px solid #eee; display:flex; justify-content:space-between; font-weight:bold; color:#666; font-size:14px;">
+            <span>Name</span>
+            <span>Actions</span>
+        </div>
         <div id="dir-items"></div>
+        <div id="file-items"></div>
     </div>
 </div>
 {% endblock %}
@@ -38,25 +49,44 @@
 <script>
     let currentPath = '/';
 
+    function showLoading(text = 'Loading...') {
+        const overlay = document.getElementById('loading-overlay');
+        document.getElementById('loading-text').textContent = text;
+        overlay.style.display = 'flex';
+    }
+
+    function hideLoading() {
+        document.getElementById('loading-overlay').style.display = 'none';
+    }
+
+    // Show spinner immediately while Firebase checks auth state
+    showLoading('Checking authentication...');
+
     firebase.auth().onAuthStateChanged(async function(user) {
         if (user) {
-            // Register user in Firestore on first login
-            await authFetch('/login', { method: 'POST' });
-
+            showLoading('Signing you in...');
+            await authFetch('/login', { method: 'POST' }, user);
             document.getElementById('login-section').style.display = 'none';
             document.getElementById('app-section').style.display = 'block';
             document.getElementById('nav-auth').innerHTML =
                 '<span style="margin-right:12px;">' + user.email + '</span>' +
                 '<button onclick="googleLogout()">Logout</button>';
-            loadDirectories();
+            hideLoading();
+            loadContents(user);
         } else {
+            hideLoading();
             document.getElementById('login-section').style.display = 'block';
             document.getElementById('app-section').style.display = 'none';
         }
     });
 
-    function loadDirectories() {
-        authFetch('/directories?path=' + encodeURIComponent(currentPath))
+    function loadContents(user = null) {
+        loadDirectories(user);
+        loadFiles(user);
+    }
+
+    function loadDirectories(user = null) {
+        authFetch('/directories?path=' + encodeURIComponent(currentPath), {}, user)
             .then(r => r.json())
             .then(dirs => {
                 const container = document.getElementById('dir-items');
@@ -64,22 +94,17 @@
 
                 if (currentPath !== '/') {
                     const upItem = document.createElement('div');
-                    upItem.style = 'padding:12px 16px; border-bottom:1px solid #eee; cursor:pointer; display:flex; align-items:center;';
+                    upItem.style = 'padding:12px 16px; border-bottom:1px solid #eee; cursor:pointer; display:flex; align-items:center; color:#0061ff;';
                     upItem.innerHTML = '<span style="margin-right:8px;">📁</span> ../';
                     upItem.onclick = () => goUpDirectory();
                     container.appendChild(upItem);
-                }
-
-                if (dirs.length === 0 && currentPath === '/') {
-                    container.innerHTML = '<div style="padding:24px; text-align:center; color:#999;">No folders yet. Create one!</div>';
-                    return;
                 }
 
                 dirs.forEach(dir => {
                     const item = document.createElement('div');
                     item.style = 'padding:12px 16px; border-bottom:1px solid #eee; display:flex; justify-content:space-between; align-items:center;';
                     item.innerHTML = `
-                        <span style="cursor:pointer;" onclick="enterDirectory('${dir.path}')">
+                        <span style="cursor:pointer; color:#0061ff;" onclick="enterDirectory('${dir.path}')">
                             <span style="margin-right:8px;">📁</span>${dir.name}
                         </span>
                         <button onclick="deleteDirectory('${dir.id}', '${dir.name}')"
@@ -92,10 +117,53 @@
             });
     }
 
+    function loadFiles(user = null) {
+        authFetch('/files?path=' + encodeURIComponent(currentPath), {}, user)
+            .then(r => r.json())
+            .then(files => {
+                const container = document.getElementById('file-items');
+                container.innerHTML = '';
+
+                if (files.length === 0) return;
+
+                // Detect duplicates by hash
+                const hashCount = {};
+                files.forEach(f => {
+                    hashCount[f.hash] = (hashCount[f.hash] || 0) + 1;
+                });
+
+                files.forEach(file => {
+                    const isDuplicate = hashCount[file.hash] > 1;
+                    const sizeKB = (file.size / 1024).toFixed(1);
+                    const item = document.createElement('div');
+                    item.style = `padding:12px 16px; border-bottom:1px solid #eee; display:flex; justify-content:space-between; align-items:center; ${isDuplicate ? 'background:#fff8e1;' : ''}`;
+                    item.innerHTML = `
+                        <span>
+                            <span style="margin-right:8px;">📄</span>${file.name}
+                            <span style="color:#999; font-size:12px; margin-left:8px;">${sizeKB} KB</span>
+                            ${isDuplicate ? '<span style="color:#f57c00; font-size:12px; margin-left:8px;">⚠ Duplicate</span>' : ''}
+                        </span>
+                        <div style="display:flex; gap:6px;">
+                            <button onclick="downloadFile('${file.id}', '${file.name}')"
+                                style="background:#0061ff; color:white; border:none; padding:4px 10px; border-radius:4px; cursor:pointer; font-size:12px;">
+                                Download
+                            </button>
+                            <button onclick="deleteFile('${file.id}', '${file.name}')"
+                                style="background:#ff4444; color:white; border:none; padding:4px 10px; border-radius:4px; cursor:pointer; font-size:12px;">
+                                Delete
+                            </button>
+                        </div>
+                    `;
+                    container.appendChild(item);
+                });
+            });
+    }
+
     function enterDirectory(path) {
         currentPath = path;
         document.getElementById('current-path-label').textContent = '📁 ' + path;
-        loadDirectories();
+        clearMessages();
+        loadContents(firebase.auth().currentUser);
     }
 
     function goUpDirectory() {
@@ -104,7 +172,8 @@
         currentPath = parts.join('/') + '/';
         if (currentPath === '') currentPath = '/';
         document.getElementById('current-path-label').textContent = '📁 ' + currentPath;
-        loadDirectories();
+        clearMessages();
+        loadContents(firebase.auth().currentUser);
     }
 
     function showCreateDir() {
@@ -120,7 +189,6 @@
     function createDirectory() {
         const name = document.getElementById('new-dir-name').value.trim();
         if (!name) return;
-
         authFetch('/directories', {
             method: 'POST',
             body: JSON.stringify({ name: name, current_path: currentPath })
@@ -128,9 +196,8 @@
         .then(r => r.json())
         .then(data => {
             if (data.error) {
-                document.getElementById('error-msg').textContent = data.error;
+                showError(data.error);
             } else {
-                document.getElementById('error-msg').textContent = '';
                 hideCreateDir();
                 loadDirectories();
             }
@@ -139,17 +206,85 @@
 
     function deleteDirectory(id, name) {
         if (!confirm('Delete folder "' + name + '"?')) return;
-
         authFetch('/directories/' + id, { method: 'DELETE' })
         .then(r => r.json())
         .then(data => {
-            if (data.error) {
-                document.getElementById('error-msg').textContent = data.error;
-            } else {
-                document.getElementById('error-msg').textContent = '';
-                loadDirectories();
-            }
+            if (data.error) showError(data.error);
+            else loadDirectories();
         });
+    }
+
+    async function uploadFile(input) {
+        const file = input.files[0];
+        if (!file) return;
+
+        showLoading('Uploading ' + file.name + '...');
+        const user = firebase.auth().currentUser;
+        const token = await user.getIdToken();
+
+        const formData = new FormData();
+        formData.append('file', file);
+        formData.append('current_path', currentPath);
+        formData.append('token', token);
+
+        const response = await fetch('/files/upload', { method: 'POST', body: formData });
+        const data = await response.json();
+
+        if (data.exists) {
+            hideLoading();
+            if (confirm('File "' + file.name + '" already exists. Overwrite?')) {
+                showLoading('Overwriting ' + file.name + '...');
+                formData.append('overwrite', 'true');
+                const r2 = await fetch('/files/upload', { method: 'POST', body: formData });
+                const d2 = await r2.json();
+                hideLoading();
+                if (d2.error) showError(d2.error);
+                else { showSuccess('File uploaded!'); loadFiles(); }
+            }
+        } else if (data.error) {
+            hideLoading();
+            showError(data.error);
+        } else {
+            hideLoading();
+            showSuccess('File uploaded!');
+            loadFiles();
+        }
+
+        input.value = '';
+    }
+
+    async function downloadFile(id, name) {
+        const user = firebase.auth().currentUser;
+        const token = await user.getIdToken();
+        const a = document.createElement('a');
+        a.href = '/files/' + id + '/download?token=' + token;
+        a.download = name;
+        a.click();
+    }
+
+    function deleteFile(id, name) {
+        if (!confirm('Delete file "' + name + '"?')) return;
+        authFetch('/files/' + id, { method: 'DELETE' })
+        .then(r => r.json())
+        .then(data => {
+            if (data.error) showError(data.error);
+            else loadFiles();
+        });
+    }
+
+    function showError(msg) {
+        document.getElementById('error-msg').textContent = msg;
+        document.getElementById('success-msg').textContent = '';
+    }
+
+    function showSuccess(msg) {
+        document.getElementById('success-msg').textContent = msg;
+        document.getElementById('error-msg').textContent = '';
+    }
+
+    function clearMessages() {
+        document.getElementById('error-msg').textContent = '';
+        document.getElementById('success-msg').textContent = '';
     }
 </script>
 {% endblock %}

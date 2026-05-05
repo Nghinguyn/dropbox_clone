@@ -9,14 +9,16 @@ const firebaseConfig = {
 
 firebase.initializeApp(firebaseConfig);
 
-// Helper: make authenticated fetch requests using Firebase token
-async function authFetch(url, options = {}) {
-    const user = firebase.auth().currentUser;
-    if (!user) throw new Error('Not logged in');
-    const token = await user.getIdToken();
+// Helper: make authenticated fetch using the provided user (avoids currentUser timing issues)
+async function authFetch(url, options = {}, user = null) {
+    const authUser = user || firebase.auth().currentUser;
+    if (!authUser) throw new Error('Not logged in');
+    const token = await authUser.getIdToken();
     options.headers = options.headers || {};
     options.headers['Authorization'] = 'Bearer ' + token;
-    options.headers['Content-Type'] = options.headers['Content-Type'] || 'application/json';
+    if (!options.headers['Content-Type'] && !(options.body instanceof FormData)) {
+        options.headers['Content-Type'] = 'application/json';
+    }
     return fetch(url, options);
 }
 
